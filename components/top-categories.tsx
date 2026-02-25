@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { useBudgetStore, getTopRankedCategories, formatCurrency } from "@/lib/budget-store"
+import { useBudgetStore, getFilteredCategoryBreakdown, formatCurrency } from "@/lib/budget-store"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import {
@@ -39,7 +39,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function TopCategories() {
   const store = useBudgetStore()
-  const categories = useMemo(() => getTopRankedCategories(store), [store])
+  const categories = useMemo(() => getFilteredCategoryBreakdown(store).slice(0, 5), [store])
 
   if (categories.length === 0) {
     return (

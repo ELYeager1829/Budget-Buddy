@@ -1,6 +1,6 @@
 "use client"
 
-import { useBudgetStore, updateSettings } from "@/lib/budget-store"
+import { useBudgetStore, updateSettings, getPeriodLabel } from "@/lib/budget-store"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +22,9 @@ export function SettingsPanel() {
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="text-foreground">Period & Year</CardTitle>
-          <CardDescription>Configure the budget timeframe for calculations.</CardDescription>
+          <CardDescription>
+            Configure the budget timeframe. Currently viewing: {getPeriodLabel(s.selected_period)}.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

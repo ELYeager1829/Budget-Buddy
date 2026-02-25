@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts"
-import { useBudgetStore, getCategoryBreakdown } from "@/lib/budget-store"
+import { useBudgetStore, getFilteredCategoryBreakdown } from "@/lib/budget-store"
 import {
   Card,
   CardContent,
@@ -68,7 +68,7 @@ export function BudgetVsTrackedChart() {
   const store = useBudgetStore()
 
   const chartData = useMemo(() => {
-    const breakdown = getCategoryBreakdown(store)
+    const breakdown = getFilteredCategoryBreakdown(store)
     return breakdown.map((d) => ({
       category: d.category,
       Budgeted: d.budgeted,
