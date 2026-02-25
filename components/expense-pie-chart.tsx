@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
-import { useBudgetStore, getCategoryBreakdown, formatCurrency } from "@/lib/budget-store"
+import { useBudgetStore, getFilteredCategoryBreakdown, formatCurrency } from "@/lib/budget-store"
 import {
   Card,
   CardContent,
@@ -92,7 +92,7 @@ export function ExpensePieChart() {
   const store = useBudgetStore()
 
   const chartData = useMemo(() => {
-    const breakdown = getCategoryBreakdown(store)
+    const breakdown = getFilteredCategoryBreakdown(store)
     return breakdown.map((d) => ({
       name: d.category,
       value: d.tracked,

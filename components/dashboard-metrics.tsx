@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { useBudgetStore, computeMetrics, formatCurrency } from "@/lib/budget-store"
+import { useBudgetStore, computeFilteredMetrics, formatCurrency } from "@/lib/budget-store"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { DollarSign, TrendingDown, Percent } from "lucide-react"
@@ -9,7 +9,7 @@ import { DollarSign, TrendingDown, Percent } from "lucide-react"
 export function DashboardMetricsCards() {
   const store = useBudgetStore()
 
-  const metrics = useMemo(() => computeMetrics(store), [store])
+  const metrics = useMemo(() => computeFilteredMetrics(store), [store])
 
   const pct = Math.min(metrics.percentage_completed, 100)
   const isOver = metrics.percentage_completed > 100

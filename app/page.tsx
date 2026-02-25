@@ -7,20 +7,31 @@ import { TopCategories } from "@/components/top-categories"
 import { BudgetPlanning } from "@/components/budget-planning"
 import { BudgetTracking } from "@/components/budget-tracking"
 import { SettingsPanel } from "@/components/settings-panel"
+import { ExportButton } from "@/components/export-budget"
+import { PeriodSelector } from "@/components/period-selector"
+import { OverspendBanner, useOverspendNotifications } from "@/components/overspend-notifications"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Wallet, LayoutDashboard, ClipboardList, BarChart3, Settings } from "lucide-react"
 
 export default function BudgetApp() {
+  useOverspendNotifications()
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 md:px-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Wallet className="h-5 w-5" />
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 md:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
+              BudgetBuddy
+            </h1>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            BudgetBuddy
-          </h1>
+          <div className="flex items-center gap-3">
+            <PeriodSelector />
+            <ExportButton />
+          </div>
         </div>
       </header>
 
@@ -47,6 +58,7 @@ export default function BudgetApp() {
 
           <TabsContent value="dashboard">
             <div className="flex flex-col gap-6">
+              <OverspendBanner />
               <DashboardMetricsCards />
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

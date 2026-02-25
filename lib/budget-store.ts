@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react"
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from "date-fns"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -270,4 +271,255 @@ export function formatCurrency(amount: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+// ─── Period Filtering ────────────────────────────────────────────────────────
+
+export function getPeriodRange(period: "weekly" | "monthly" | "yearly", referenceDate?: Date) {
+  const now = referenceDate || new Date()
+  switch (period) {
+    case "weekly":
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) }
+    case "monthly":
+      return { start: startOfMonth(now), end: endOfMonth(now) }
+    case "yearly":
+      return { start: startOfYear(now), end: endOfYear(now) }
+  }
+}
+
+export function getPeriodLabel(period: "weekly" | "monthly" | "yearly") {
+  const now = new Date()
+  switch (period) {
+    case "weekly": {
+      const range = getPeriodRange("weekly")
+      const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      return `Week of ${fmt(range.start)} - ${fmt(range.end)}`
+    }
+    case "monthly":
+      return now.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    case "yearly":
+      return now.getFullYear().toString()
+  }
+}
+
+export function getFilteredTrackedExpenses(s: StoreState) {
+  const range = getPeriodRange(s.settings.selected_period)
+  return s.trackedExpenses.filter((t) => {
+    const d = new Date(t.date + "T12:00:00")
+    return isWithinInterval(d, { start: range.start, end: range.end })
+  })
+}
+
+export function computeFilteredMetrics(s: StoreState): DashboardMetrics {
+  const filtered = getFilteredTrackedExpenses(s)
+  const expenseItems = s.budgetItems.filter((i) => i.type === "expense")
+  const incomeItems = s.budgetItems.filter((i) => i.type === "income")
+
+  const budget_total = expenseItems.reduce((sum, i) => sum + i.budget_amount, 0)
+  const income_total = incomeItems.reduce((sum, i) => sum + i.budget_amount, 0)
+
+  const expenseItemIds = new Set(expenseItems.map((i) => i.id))
+  const incomeItemIds = new Set(incomeItems.map((i) => i.id))
+
+  const tracked_total = filtered
+    .filter((t) => expenseItemIds.has(t.budget_item_id))
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const tracked_income = filtered
+    .filter((t) => incomeItemIds.has(t.budget_item_id))
+    .reduce((sum, t) => sum + t.amount, 0)
+
+  const remaining_budget = budget_total - tracked_total
+  const percentage_completed = budget_total > 0 ? (tracked_total / budget_total) * 100 : 0
+
+  return { budget_total, tracked_total, remaining_budget, percentage_completed, income_total, tracked_income }
+}
+
+export function getFilteredCategoryBreakdown(s: StoreState) {
+  const filtered = getFilteredTrackedExpenses(s)
+  const expenseItems = s.budgetItems.filter((i) => i.type === "expense")
+  const categoryMap = new Map<string, { budgeted: number; tracked: number }>()
+
+  for (const item of expenseItems) {
+    const current = categoryMap.get(item.category) || { budgeted: 0, tracked: 0 }
+    current.budgeted += item.budget_amount
+    categoryMap.set(item.category, current)
+  }
+
+  for (const tracked of filtered) {
+    const budgetItem = s.budgetItems.find((i) => i.id === tracked.budget_item_id)
+    if (budgetItem && budgetItem.type === "expense") {
+      const current = categoryMap.get(budgetItem.category) || { budgeted: 0, tracked: 0 }
+      current.tracked += tracked.amount
+      categoryMap.set(budgetItem.category, current)
+    }
+  }
+
+  return Array.from(categoryMap.entries())
+    .map(([category, data]) => ({
+      category,
+      budgeted: data.budgeted,
+      tracked: data.tracked,
+      remaining: data.budgeted - data.tracked,
+      overBudget: data.tracked > data.budgeted,
+      percentage: data.budgeted > 0 ? (data.tracked / data.budgeted) * 100 : 0,
+    }))
+    .sort((a, b) => b.tracked - a.tracked)
+}
+
+// ─── Overspending Detection ──────────────────────────────────────────────────
+
+export interface OverspendingItem {
+  itemId: string
+  itemName: string
+  category: string
+  budgeted: number
+  tracked: number
+  overBy: number
+}
+
+export function getOverspendingItems(s: StoreState): OverspendingItem[] {
+  const filtered = getFilteredTrackedExpenses(s)
+  const expenseItems = s.budgetItems.filter((i) => i.type === "expense")
+
+  const trackedMap = new Map<string, number>()
+  for (const t of filtered) {
+    trackedMap.set(t.budget_item_id, (trackedMap.get(t.budget_item_id) || 0) + t.amount)
+  }
+
+  return expenseItems
+    .filter((item) => {
+      const tracked = trackedMap.get(item.id) || 0
+      return tracked > item.budget_amount
+    })
+    .map((item) => {
+      const tracked = trackedMap.get(item.id) || 0
+      return {
+        itemId: item.id,
+        itemName: item.name,
+        category: item.category,
+        budgeted: item.budget_amount,
+        tracked,
+        overBy: tracked - item.budget_amount,
+      }
+    })
+}
+
+// ─── Export Utilities ─────────────────────────────────────────────────────────
+
+export function generateCSV(s: StoreState): string {
+  const metrics = computeFilteredMetrics(s)
+  const breakdown = getFilteredCategoryBreakdown(s)
+  const filtered = getFilteredTrackedExpenses(s)
+  const period = s.settings.selected_period
+  const periodLabel = getPeriodLabel(period)
+
+  let csv = "BudgetBuddy Export\n"
+  csv += `Period,${periodLabel}\n`
+  csv += `Generated,${new Date().toLocaleDateString()}\n\n`
+
+  csv += "SUMMARY\n"
+  csv += "Metric,Amount\n"
+  csv += `Total Budget,${metrics.budget_total}\n`
+  csv += `Tracked Expenses,${metrics.tracked_total}\n`
+  csv += `Remaining,${metrics.remaining_budget}\n`
+  csv += `Completion,${metrics.percentage_completed.toFixed(1)}%\n`
+  csv += `Planned Income,${metrics.income_total}\n`
+  csv += `Tracked Income,${metrics.tracked_income}\n\n`
+
+  csv += "CATEGORY BREAKDOWN\n"
+  csv += "Category,Budgeted,Tracked,Remaining,Over Budget\n"
+  for (const c of breakdown) {
+    csv += `${c.category},${c.budgeted},${c.tracked},${c.remaining},${c.overBudget ? "Yes" : "No"}\n`
+  }
+  csv += "\n"
+
+  csv += "TRACKED TRANSACTIONS\n"
+  csv += "Date,Item,Category,Type,Amount,Note\n"
+  for (const t of filtered) {
+    const item = s.budgetItems.find((i) => i.id === t.budget_item_id)
+    csv += `${t.date},${item?.name || "Unknown"},${item?.category || "Other"},${item?.type || "expense"},${t.amount},"${t.note}"\n`
+  }
+
+  return csv
+}
+
+export function downloadCSV(s: StoreState) {
+  const csv = generateCSV(s)
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `budget-buddy-${s.settings.selected_period}-${new Date().toISOString().split("T")[0]}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+export function downloadPDF(s: StoreState) {
+  const metrics = computeFilteredMetrics(s)
+  const breakdown = getFilteredCategoryBreakdown(s)
+  const filtered = getFilteredTrackedExpenses(s)
+  const periodLabel = getPeriodLabel(s.settings.selected_period)
+  const overspending = getOverspendingItems(s)
+
+  const printWindow = window.open("", "_blank")
+  if (!printWindow) return
+
+  const html = `<!DOCTYPE html>
+<html><head><title>BudgetBuddy Report</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; color: #1a2332; }
+  h1 { font-size: 24px; margin-bottom: 4px; color: #1a2332; }
+  h2 { font-size: 16px; margin: 28px 0 12px; color: #4a90d9; border-bottom: 2px solid #e8ecf0; padding-bottom: 6px; }
+  .subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px; }
+  .metric { background: #f0f5fa; border-radius: 8px; padding: 16px; }
+  .metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 700; }
+  .over { color: #e11d48; }
+  .ok { color: #059669; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 12px; background: #f0f5fa; font-weight: 600; color: #475569; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8ecf0; }
+  .alert { background: #fef2f2; border-left: 3px solid #e11d48; padding: 10px 14px; border-radius: 4px; margin-bottom: 8px; font-size: 13px; }
+  .alert strong { color: #e11d48; }
+  @media print { body { padding: 20px; } }
+</style></head><body>
+  <h1>BudgetBuddy Report</h1>
+  <p class="subtitle">${periodLabel} &mdash; Generated ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Total Budget</div><div class="metric-value">$${metrics.budget_total.toLocaleString()}</div></div>
+    <div class="metric"><div class="metric-label">Tracked</div><div class="metric-value ${metrics.percentage_completed > 100 ? "over" : ""}">$${metrics.tracked_total.toLocaleString()}</div></div>
+    <div class="metric"><div class="metric-label">Remaining</div><div class="metric-value ${metrics.remaining_budget < 0 ? "over" : "ok"}">$${metrics.remaining_budget.toLocaleString()}</div></div>
+  </div>
+
+  ${overspending.length > 0 ? `
+  <h2>Overspending Alerts</h2>
+  ${overspending.map((o) => `<div class="alert"><strong>${o.itemName}</strong> (${o.category}) &mdash; Over by $${o.overBy.toLocaleString()} (tracked $${o.tracked.toLocaleString()} of $${o.budgeted.toLocaleString()} budget)</div>`).join("")}
+  ` : ""}
+
+  <h2>Category Breakdown</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Budgeted</th><th>Tracked</th><th>Remaining</th><th>Status</th></tr></thead>
+    <tbody>${breakdown.map((c) => `<tr><td>${c.category}</td><td>$${c.budgeted.toLocaleString()}</td><td>$${c.tracked.toLocaleString()}</td><td>$${c.remaining.toLocaleString()}</td><td class="${c.overBudget ? "over" : "ok"}">${c.overBudget ? "Over Budget" : "On Track"}</td></tr>`).join("")}</tbody>
+  </table>
+
+  <h2>Transactions (${filtered.length})</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th><th>Note</th></tr></thead>
+    <tbody>${filtered.map((t) => {
+      const item = s.budgetItems.find((i) => i.id === t.budget_item_id)
+      return `<tr><td>${t.date}</td><td>${item?.name || "Unknown"}</td><td>${item?.category || ""}</td><td>$${t.amount.toLocaleString()}</td><td>${t.note}</td></tr>`
+    }).join("")}</tbody>
+  </table>
+
+  <script>window.onload = function() { window.print(); }</script>
+</body></html>`
+
+  printWindow.document.write(html)
+  printWindow.document.close()
 }

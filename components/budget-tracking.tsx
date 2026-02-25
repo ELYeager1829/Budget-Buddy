@@ -8,6 +8,7 @@ import {
   updateTrackedExpense,
   deleteTrackedExpense,
   formatCurrency,
+  getFilteredTrackedExpenses,
   type TrackedExpense,
   type BudgetItem,
 } from "@/lib/budget-store"
@@ -305,13 +306,18 @@ export function BudgetTracking() {
   const store = useBudgetStore()
   const [addOpen, setAddOpen] = useState(false)
 
+  const filteredTracked = useMemo(
+    () => getFilteredTrackedExpenses(store),
+    [store]
+  )
+
   const itemTrackedTotals = useMemo(() => {
     const map = new Map<string, number>()
-    for (const t of store.trackedExpenses) {
+    for (const t of filteredTracked) {
       map.set(t.budget_item_id, (map.get(t.budget_item_id) || 0) + t.amount)
     }
     return map
-  }, [store.trackedExpenses])
+  }, [filteredTracked])
 
   const expenseItems = useMemo(
     () => store.budgetItems.filter((i) => i.type === "expense"),
@@ -319,10 +325,10 @@ export function BudgetTracking() {
   )
 
   const sortedTracked = useMemo(
-    () => [...store.trackedExpenses].sort(
+    () => [...filteredTracked].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     ),
-    [store.trackedExpenses]
+    [filteredTracked]
   )
 
   const overBudgetCount = useMemo(
