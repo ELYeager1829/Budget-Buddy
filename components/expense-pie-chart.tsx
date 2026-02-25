@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
-import { useBudgetEntries } from "@/lib/budget-store"
+import { useBudgetStore, getCategoryBreakdown, formatCurrency } from "@/lib/budget-store"
 import {
   Card,
   CardContent,
@@ -13,18 +13,13 @@ import {
 
 const CATEGORY_COLORS: Record<string, string> = {
   Food: "#4a90d9",
-  Rent: "#2563eb",
+  Rent: "#6366f1",
   Transport: "#38bdf8",
   Entertainment: "#f59e42",
+  Utilities: "#eab308",
+  Healthcare: "#ef4444",
+  Savings: "#22c55e",
   Other: "#94a3b8",
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-  }).format(amount)
 }
 
 interface LabelProps {
@@ -88,33 +83,24 @@ function CustomTooltip({
   return (
     <div className="rounded-lg border bg-card px-3 py-2 text-card-foreground shadow-md">
       <p className="text-sm font-semibold">{data.name}</p>
-      <p className="text-sm text-muted-foreground">
-        {formatCurrency(data.value)}
-      </p>
+      <p className="text-sm text-muted-foreground">{formatCurrency(data.value)}</p>
     </div>
   )
 }
 
 export function ExpensePieChart() {
-  const entries = useBudgetEntries()
+  const store = useBudgetStore()
 
   const chartData = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const entry of entries) {
-      if (entry.type === "expense") {
-        map.set(entry.category, (map.get(entry.category) || 0) + entry.amount)
-      }
-    }
-    return Array.from(map.entries())
-      .map(([name, value]) => ({
-        name,
-        value,
-        fill: CATEGORY_COLORS[name] || "#94a3b8",
-      }))
-      .sort((a, b) => b.value - a.value)
-  }, [entries])
+    const breakdown = getCategoryBreakdown(store)
+    return breakdown.map((d) => ({
+      name: d.category,
+      value: d.tracked,
+      fill: CATEGORY_COLORS[d.category] || "#94a3b8",
+    }))
+  }, [store])
 
-  const totalExpenses = useMemo(
+  const totalTracked = useMemo(
     () => chartData.reduce((sum, d) => sum + d.value, 0),
     [chartData]
   )
@@ -123,10 +109,8 @@ export function ExpensePieChart() {
     return (
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Expenses by Category</CardTitle>
-          <CardDescription>
-            Add expenses to see your spending breakdown
-          </CardDescription>
+          <CardTitle className="text-foreground">Expenses by Category</CardTitle>
+          <CardDescription>Add expenses to see your spending breakdown</CardDescription>
         </CardHeader>
         <CardContent className="flex h-64 items-center justify-center">
           <p className="text-sm text-muted-foreground">No expense data yet</p>
@@ -138,10 +122,8 @@ export function ExpensePieChart() {
   return (
     <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle>Expenses by Category</CardTitle>
-        <CardDescription>
-          Total spending: {formatCurrency(totalExpenses)}
-        </CardDescription>
+        <CardTitle className="text-foreground">Expenses by Category</CardTitle>
+        <CardDescription>Total tracked: {formatCurrency(totalTracked)}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="h-64">
@@ -174,9 +156,7 @@ export function ExpensePieChart() {
                 className="inline-block h-3 w-3 rounded-full"
                 style={{ backgroundColor: item.fill }}
               />
-              <span className="text-sm text-muted-foreground">
-                {item.name}
-              </span>
+              <span className="text-sm text-muted-foreground">{item.name}</span>
             </div>
           ))}
         </div>
